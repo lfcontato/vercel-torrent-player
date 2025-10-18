@@ -1,0 +1,9 @@
+{
+    "name": "webtorrent-player-vercel",
+    "version": "1.0.0",
+    "description": "WebTorrent streaming client deployed on Vercel.",
+    "main": "index.html",
+    "scripts": {
+        "start": "echo 'Run this project via Vercel deployment'"
+    }
+}

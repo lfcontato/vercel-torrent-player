@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>WebTorrent Player na Vercel</title>
+    <style>
+        /* [ESTILOS CSS - IGUAL AO ANTERIOR] */
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        #video-container {
+            margin-top: 20px;
+            min-height: 200px;
+            background-color: #000;
+        }
+
+        #video-container video {
+            width: 100%;
+            display: none;
+        }
+
+        #info {
+            margin-top: 15px;
+            text-align: left;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+        }
+
+        #progress-bar {
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        #progress {
+            height: 100%;
+            width: 0%;
+            background-color: #007bff;
+            /* Cor alterada para combinar com o botão */
+            border-radius: 5px;
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>WebTorrent Stream Player (Hospedado na Vercel)</h1>
+        <p>O cliente P2P (WebTorrent) roda diretamente no seu navegador.</p>
+
+        <input type="text" id="magnet-link-input" placeholder="Cole seu Magnet Link aqui..."
+            style="width: 70%; padding: 10px; margin-right: 10px; border: 1px solid #ccc; border-radius: 4px;">
+        <button onclick="startStreaming()"
+            style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            Iniciar Streaming
+        </button>
+
+        <div id="video-container">
+        </div>
+
+        <div id="progress-bar">
+            <div id="progress"></div>
+        </div>
+
+        <div id="info">
+            <p>Status: <span id="status">Aguardando link...</span></p>
+            <p>Peers: <span id="peers">0</span></p>
+            <p>Vel. Download: <span id="download-speed">0 KB/s</span></p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/webtorrent@1.0.3/webtorrent.min.js"></script>
+
+    <script>
+    const client = new WebTorrent();
+    let currentTorrent = null;
+
+    const statusEl = document.getElementById('status');
+    const peersEl = document.getElementById('peers');
+    const downloadSpeedEl = document.getElementById('download-speed');
+    const progressBarEl = document.getElementById('progress');
+    const videoContainerEl = document.getElementById('video-container');
+
+    function log(message) {
+        statusEl.textContent = message;
+    }
+
+    function startStreaming() {
+        const magnetURI = document.getElementById('magnet-link-input').value.trim();
+        
+        if (!magnetURI.startsWith('magnet:')) {
+            log('Erro: Link inválido. Use um link que comece com "magnet:".');
+            return;
+        }
+
+        log('Iniciando. Baixando metadados...');
+        
+        if (currentTorrent) {
+            currentTorrent.destroy();
+            videoContainerEl.innerHTML = '';
+            currentTorrent = null;
+        }
+
+        client.add(magnetURI, (torrent) => {
+            currentTorrent = torrent;
+            log('Metadados obtidos. Procurando peers...');
+
+            const file = torrent.files.find((f) => {
+                const name = f.name.toLowerCase();
+                return name.endsWith('.mp4') || name.endsWith('.mkv') || name.endsWith('.webm');
+            });
+
+            if (file) {
+                // A chave: file.appendTo() cria o elemento <video> e
+                // inicia o streaming P2P/sequencial no navegador.
+                file.appendTo(videoContainerEl, { autoplay: true }, (err, elem) => {
+                    if (err) {
+                        log('Erro ao anexar o arquivo: ' + err.message);
+                        return;
+                    }
+                    elem.style.display = 'block';
+                    log(`Streaming de "${file.name}" iniciado.`);
+                });
+            } else {
+                log('Nenhum arquivo de vídeo suportado encontrado no torrent.');
+                torrent.destroy();
+            }
+
+            // Atualização de Status
+            torrent.on('wire', () => {
+                peersEl.textContent = torrent.numPeers;
+            });
+            
+            torrent.on('done', () => {
+                log('Download completo e em seed!');
+            });
+            
+            // Loop de atualização da UI
+            const updateInterval = setInterval(() => {
+                if (torrent.progress > 0) {
+                    const progressPercent = (torrent.progress * 100).toFixed(1);
+                    progressBarEl.style.width = progressPercent + '%';
+                    
+                    const downloadRate = (torrent.downloadSpeed / 1024).toFixed(2);
+                    downloadSpeedEl.textContent = `${downloadRate} KB/s`;
+                    
+                    if (file) {
+                        // Atualiza o status sem sobrepor a mensagem de início do streaming
+                        if (torrent.progress < 1) {
+                            statusEl.textContent = `Streaming de "${file.name}". Progresso Total: ${progressPercent}%`;
+                        }
+                    }
+                }
+            }, 500);
+
+            // Parar o loop de atualização ao destruir o torrent (para evitar vazamento de memória)
+            torrent.on('close', () => clearInterval(updateInterval));
+        });
+
+        client.on('error', (err) => {
+            log('Erro do Cliente WebTorrent: ' + err.message);
+        });
+    }
+
+    log('Aguardando link...');
+    </script>
+
+</body>
+
+</html>
